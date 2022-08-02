@@ -54,13 +54,13 @@ class WindowsCountersNode(nodes.LazyNode):
         error = exc.strerror
 
         if 'No data' in error:
-            error = error + ' Does the counter (' + name  + ') exist?'
+            error = f'{error} Does the counter ({name}) exist?'
             logging.debug(exc)
         elif 'not valid' in error:
-            error = error + ' You may need to add the sleep=1 parameter.'
+            error = f'{error} You may need to add the sleep=1 parameter.'
             logging.debug(exc)
         elif 'negative value' in error:
-            error = error + ' You may need to add the format=1 parameter.'
+            error = f'{error} You may need to add the format=1 parameter.'
             logging.debug(exc)
         else:
             logging.exception(exc)
@@ -136,10 +136,10 @@ class WindowsCountersNode(nodes.LazyNode):
         #                           $  -- Last character matched must be end of string
         # End result after split() is length-5 array. indices 1-3 refer to the capture groups
         wpc_regex = r'^([^(/]*)\(?(.*?)\)?/(.*)$'
-        match_list = re.split(wpc_regex, wpc_string) 
+        match_list = re.split(wpc_regex, wpc_string)
         counter_path = '\\'
         if match_list[2]:
-            counter_path += match_list[1] + '(' + match_list[2] + ')\\' + match_list[3]
+            counter_path += f'{match_list[1]}({match_list[2]}' + ')\\' + match_list[3]
         else:
             counter_path += match_list[1] + '\\' + match_list[3]
         return counter_path

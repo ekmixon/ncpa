@@ -36,25 +36,24 @@ class ParentNode(object):
         self.children[new_node.name] = new_node
 
     def accessor(self, path, config, full_path, args):
-        if path:
-            next_child_name, rest_path = path[0], path[1:]
-            try:
-                child = self.children[next_child_name]
-                valid_nodes.append(next_child_name)
-            except KeyError:
-                # Record all proper valid nodes
-                for child in self.children:
-                    valid_nodes.append(child)
-
-                # Create a does not exist node to return error message
-                if self.__class__.__name__ == 'PluginAgentNode':
-                    return DoesNotExistNode(next_child_name, 'plugin', full_path)
-                return DoesNotExistNode(next_child_name, 'node', full_path)
-
-            # Continue down the node path
-            return child.accessor(rest_path, config, full_path, args)
-        else:
+        if not path:
             return copy.deepcopy(self)
+        next_child_name, rest_path = path[0], path[1:]
+        try:
+            child = self.children[next_child_name]
+            valid_nodes.append(next_child_name)
+        except KeyError:
+            # Record all proper valid nodes
+            for child in self.children:
+                valid_nodes.append(child)
+
+            # Create a does not exist node to return error message
+            if self.__class__.__name__ == 'PluginAgentNode':
+                return DoesNotExistNode(next_child_name, 'plugin', full_path)
+            return DoesNotExistNode(next_child_name, 'node', full_path)
+
+        # Continue down the node path
+        return child.accessor(rest_path, config, full_path, args)
 
     def walk(self, *args, **kwargs):
         stat = {}
@@ -62,10 +61,10 @@ class ParentNode(object):
             try:
                 if kwargs.get('first', None) is None:
                     kwargs['first'] = False
-                stat.update(child.walk(*args, **kwargs))
+                stat |= child.walk(*args, **kwargs)
             except Exception as exc:
                 logging.exception(exc)
-                stat.update({ name: 'Error retrieving child: %r' % str(exc) })
+                stat[name] = 'Error retrieving child: %r' % str(exc)
         return { self.name: stat }
 
     def run_check(self, *args, **kwargs):
@@ -82,10 +81,7 @@ class RunnableParentNode(ParentNode):
         self.primary = primary
         self.primary_unit = primary_unit
         self.custom_output = custom_output
-        if include is None:
-            self.include = [x for x in self.children]
-        else:
-            self.include = include
+        self.include = list(self.children) if include is None else include
 
     def run_check(self, *args, **kwargs):
         primary_info = {}
@@ -183,10 +179,7 @@ class RunnableNode(ParentNode):
         return { self.name: values }
 
     def set_unit(self, unit, request_args):
-        if 'unit' in request_args:
-            self.unit = request_args['unit'][0]
-        else:
-            self.unit = unit
+        self.unit = request_args['unit'][0] if 'unit' in request_args else unit
 
     def get_delta_values(self, values, request_args, hasher=False, *args, **kwargs):
         delta = request_args.get('delta', False)
@@ -194,17 +187,13 @@ class RunnableNode(ParentNode):
         # If the value is empty string, empty list, empty object, 0, False or None,
         # then this is clearly not what we want and we simply hash against the API
         # accessor.
-        if not hasher:
-            accessor = request_args.get('accessor', '')
-        else:
-            accessor = hasher
-
+        accessor = hasher or request_args.get('accessor', '')
         # Make accessor even more unique (for parent node deltas)
-        accessor += '.' + self.name
+        accessor += f'.{self.name}'
 
         if delta:
             self.delta = True
-            self.unit = self.unit + '/s'
+            self.unit = f'{self.unit}/s'
             remote_addr = request_args.get('remote_addr', None)
 
             values = self.deltaize_values(values, accessor, remote_addr)
@@ -238,26 +227,20 @@ class RunnableNode(ParentNode):
 
     def set_title(self, request_args):
         title = request_args.get('title', None)
-        if not title is None:
-            self.title = title[0]
-        else:
-            self.title = self.name
+        self.title = title[0] if title is not None else self.name
 
     def set_perfdata_label(self, request_args):
         perfdata_label = request_args.get('perfdata_label', None)
-        if not perfdata_label is None:
-            self.perfdata_label = perfdata_label[0]
-        else:
-            self.perfdata_label = None
+        self.perfdata_label = perfdata_label[0] if perfdata_label is not None else None
 
     def get_aggregated_values(self, values, request_args):
         aggregate = request_args.get('aggregate', 'None')
-        
+
         # Do a quick check to verify that we are using a string not a list/tuple
         # which happens to occur on Windows requests only...
         if isinstance(aggregate, (list, tuple)):
             aggregate = aggregate[0]
-        
+
         if aggregate == 'max':
             return [max(values)]
         elif aggregate == 'min':
@@ -293,7 +276,7 @@ class RunnableNode(ParentNode):
     def run_check(self, use_perfdata=True, use_prefix=True, primary=False,
                   primary_total=0, secondary_data=False, custom_output=None,
                   capitalize=True, child_check=False, *args, **kwargs):
-        
+
         try:
             values, unit = self.get_values(*args, **kwargs)
         except AttributeError:
@@ -306,9 +289,9 @@ class RunnableNode(ParentNode):
             is_warning = False
             is_critical = False
             if self.warning:
-                is_warning = any([self.is_within_range(self.warning, x) for x in values])
+                is_warning = any(self.is_within_range(self.warning, x) for x in values)
             if self.critical:
-                is_critical = any([self.is_within_range(self.critical, x) for x in values])
+                is_critical = any(self.is_within_range(self.critical, x) for x in values)
             returncode, stdout, perfdata = self.get_nagios_return(values, is_warning, is_critical, use_perfdata,
                                                 use_prefix, primary, primary_total, secondary_data,
                                                 custom_output, capitalize)
@@ -357,7 +340,7 @@ class RunnableNode(ParentNode):
                     nice_values.append('%0.2f %s' % (x, self.unit))
             except TypeError:
                 logging.info('Did not receive normal values. Unable to find meaningful check.')
-                return 0, 'OK: %s was %s' % (proper_name, str(values)), ''
+                return 0, f'OK: {proper_name} was {str(values)}', ''
         values_for_info_line = ', '.join(nice_values)
 
         returncode = 0
@@ -375,11 +358,7 @@ class RunnableNode(ParentNode):
         else:
             perfdata_label = self.perfdata_label
 
-        if len(self.unit) > 3:
-            perf_unit = ''
-        else:
-            perf_unit = self.unit
-
+        perf_unit = '' if len(self.unit) > 3 else self.unit
         if isinstance(self.warning, list):
             self.warning = self.warning[0]
 
@@ -397,43 +376,39 @@ class RunnableNode(ParentNode):
 
             # Only display on primary value to the fact that warning/critical values are ONLY
             # accurate when on the primary value's perfdata
-            if primary_total == 0:
-                perf += '%s;%s;' % (self.warning, self.critical)
-            else:
-                perf += ';;'
-
+            perf += f'{self.warning};{self.critical};' if primary_total == 0 else ';;'
             if v == 1:
                 perf = "'%s'%s" % (perfdata_label, perf)
             else:
                 perf = "'%s_%d'%s" % (perfdata_label, i, perf)
 
             perfdata.append(perf)
-        
+
         perfdata = ' '.join(perfdata)
 
         # Hack in the uptime change because we can't do much else...
         # this will be removed in NCPA 3
         if self.name == 'uptime':
-            custom_output = proper_name + ' was ' + self.elapsed_time(values[0])
+            custom_output = f'{proper_name} was {self.elapsed_time(values[0])}'
             values_for_info_line = ''
 
         if secondary_data is True:
-            stdout = '%s: %s' % (proper_name, values_for_info_line)
+            stdout = f'{proper_name}: {values_for_info_line}'
         else:
-            output = proper_name + ' was'
+            output = f'{proper_name} was'
             if custom_output:
                 output = custom_output
-            stdout = '%s %s' % (output, values_for_info_line)
+            stdout = f'{output} {values_for_info_line}'
         stdout = stdout.rstrip()
 
         if use_prefix is True:
-            stdout = '%s: %s' % (info_prefix, stdout)
+            stdout = f'{info_prefix}: {stdout}'
 
         if primary is True:
             stdout = '%s {extra_data}' % stdout
 
         if use_perfdata is True:
-            stdout = '%s | %s' % (stdout, perfdata)
+            stdout = f'{stdout} | {perfdata}'
 
         return returncode, stdout, perfdata
 
@@ -533,7 +508,7 @@ class RunnableNode(ParentNode):
             pvalues = pvalues[0]
 
         if factor != 1.0:
-            self.unit = '%s%s' % (units, self.unit)
+            self.unit = f'{units}{self.unit}'
 
         return pvalues, units
 
@@ -556,19 +531,35 @@ class RunnableNode(ParentNode):
 
         #The following is a list of regular expression => function. If the regular expression matches
         #then run the function. The function is a comparison involving value.
-        actions = [(r'^%s$' % first_float, lambda y: (value > float(y.group('first'))) or (value < 0)),
-                   (r'^%s:$' % first_float, lambda y: value < float(y.group('first'))),
-                   (r'^:%s$' % first_float, lambda y: (value > float(y.group('first'))) or (value < 0)),
-                   (r'^~:%s$' % first_float, lambda y: value > float(y.group('first'))),
-                   (r'^%s:%s$' % (first_float, second_float), lambda y: (value < float(y.group('first'))) or (value > float(y.group('second')))),
-                   (r'^@%s:%s$' % (first_float, second_float), lambda y: not((value < float(y.group('first'))) or (value > float(y.group('second')))))]
+        actions = [
+            (
+                f'^{first_float}$',
+                lambda y: (value > float(y.group('first'))) or (value < 0),
+            ),
+            (f'^{first_float}:$', lambda y: value < float(y.group('first'))),
+            (
+                f'^:{first_float}$',
+                lambda y: (value > float(y.group('first'))) or (value < 0),
+            ),
+            (f'^~:{first_float}$', lambda y: value > float(y.group('first'))),
+            (
+                f'^{first_float}:{second_float}$',
+                lambda y: (value < float(y.group('first')))
+                or (value > float(y.group('second'))),
+            ),
+            (
+                f'^@{first_float}:{second_float}$',
+                lambda y: value >= float(y.group('first'))
+                and value <= float(y.group('second')),
+            ),
+        ]
+
 
         #For each of the previous list items, run the regular expression, and if the regular expression
         #finds a match, run the function and return its comparison result.
         nagios_range = ''.join(nagios_range)
         for regex_string, func in actions:
-            res = re.match(regex_string, nagios_range)
-            if res:
+            if res := re.match(regex_string, nagios_range):
                 return func(res)
 
         #If none of the items matches, the warning/critical format was bogus! Sound the alarms!
@@ -580,12 +571,11 @@ class RunnableNode(ParentNode):
         result = []
 
         for name, count in intervals:
-            value = seconds // count
-            if value:
+            if value := seconds // count:
                 seconds -= value * count
                 if value == 1:
                     name = name.rstrip('s')
-                result.append("{} {}".format(int(value), name))
+                result.append(f"{int(value)} {name}")
         return ' '.join(result)
 
 
@@ -620,9 +610,9 @@ class DoesNotExistNode():
 
 
     def walk(self, *args, **kwargs):
-        err = "The %s requested does not exist." % self.node_type
+        err = f"The {self.node_type} requested does not exist."
         if self.extra_message:
-            err = "%s %s" % (err, self.extra_message)
+            err = f"{err} {self.extra_message}"
         obj = {
                     "error" :
                     {
@@ -635,9 +625,10 @@ class DoesNotExistNode():
         return obj
 
     def run_check(self, *args, **kwargs):
-        err = 'UNKNOWN: The %s (%s) requested does not exist.' % (self.node_type, self.failed_node_name)
+        err = f'UNKNOWN: The {self.node_type} ({self.failed_node_name}) requested does not exist.'
+
         if self.extra_message:
-            err = "%s %s" % (err, self.extra_message)
+            err = f"{err} {self.extra_message}"
         err = err.replace('|', '/')
         return { 'stdout': err,
                  'returncode': 3 }

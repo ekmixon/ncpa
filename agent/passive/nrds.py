@@ -24,34 +24,6 @@ class Handler(nagioshandler.NagiosHandler):
 
         # The NRDS section does not exist right now..
         return
-        
-        try:
-            nrds_url = self.config.get('nrds', 'url')
-            nrds_config = self.config.get('nrds', 'config_name')
-            nrds_config_version = self.config.get('nrds', 'config_version')
-            nrds_token = self.config.get('nrds', 'token')
-        except (ConfigParser.NoOptionError, ConfigParser.NoSectionError) as exc:
-            logging.error("Encountered error while getting NRDS config values: %r", exc)
-
-        # Make sure valid input was stated in the config, if not, error out and log it.
-        for directive in [nrds_url, nrds_config, nrds_config_version, nrds_token]:
-            if directive is None:
-                logging.error("Cannot start NRDS transaction: %r is invalid or missing.", directive)
-                return
-
-        # Check to see if an update is required.
-        if self.config_update_is_required(nrds_url, nrds_token, nrds_config, nrds_config_version):
-            logging.debug('Updating my NRDS config...')
-            self.update_config(nrds_url, nrds_token, nrds_config)
-
-        # Then install any necessary plugins if need be.
-        needed_plugins = self.list_missing_plugins()
-        if needed_plugins:
-            logging.debug('We need some plugins. Getting them...')
-            for plugin in needed_plugins:
-                self.get_plugin(plugin)
-
-        logging.debug('Done with this NRDS iteration.')
 
     @staticmethod
     def get_plugin(nrds_url, nrds_token, nrds_os, plugin_path, plugin):
@@ -167,19 +139,18 @@ class Handler(nagioshandler.NagiosHandler):
         """
         plat = sys.platform
 
-        if plat == 'darwin' or plat == 'mac':
-            nrds_os = 'Darwin'
+        if plat in ['darwin', 'mac']:
+            return 'Darwin'
         elif 'linux' in plat:
-            nrds_os = 'Linux'
+            return 'Linux'
         elif 'aix' in plat:
-            nrds_os = 'AIX'
+            return 'AIX'
         elif 'sun' in plat:
-            nrds_os = 'SunOS'
+            return 'SunOS'
         elif 'win' in plat:
-            nrds_os = 'Windows'
+            return 'Windows'
         else:
-            nrds_os = 'Generic'
-        return nrds_os
+            return 'Generic'
 
     def list_missing_plugins(self):
         """
@@ -203,11 +174,10 @@ class Handler(nagioshandler.NagiosHandler):
         required_plugins = set()
 
         for target, check in checks_in_config:
-            if '|' in target:
-                if 'plugin/' in check:
-                    plugin_search = re.search(u'plugin/([^/]+).*', check)
-                    plugin_name = plugin_search.group(1)
-                    required_plugins.add(plugin_name)
+            if '|' in target and 'plugin/' in check:
+                plugin_search = re.search(u'plugin/([^/]+).*', check)
+                plugin_name = plugin_search[1]
+                required_plugins.add(plugin_name)
 
         return required_plugins
 

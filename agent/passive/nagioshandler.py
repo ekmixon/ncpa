@@ -66,7 +66,7 @@ class NagiosHandler(object):
         :rtype: unicode
         """
         hostname = platform.node()
-        logging.debug('Using the platform node name: %s' % hostname)
+        logging.debug(f'Using the platform node name: {hostname}')
         return hostname
 
     def run(self, *args, **kwargs):

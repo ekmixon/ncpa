@@ -20,7 +20,7 @@ def filter_services(m):
         services = m(*args, **kwargs)
 
         # Match type for services
-        match = kwargs.get('match', None)
+        match = kwargs.get('match')
         if isinstance(match, list):
             match = match[0]
 
@@ -51,7 +51,7 @@ def filter_services(m):
                     else:
                         if service in services:
                             accepted[service] = services[service]
-            
+
             # Match statuses
             if filter_statuses:
                 for service in services:
@@ -60,6 +60,7 @@ def filter_services(m):
 
             return accepted
         return services
+
     return wrapper
 
 
@@ -111,10 +112,7 @@ class ServiceNode(nodes.LazyNode):
         services = {}
         for service in psutil.win_service_iter():
             name = service.name()
-            if service.status() == 'running':
-                services[name] = 'running'
-            else:
-                services[name] = 'stopped'
+            services[name] = 'running' if service.status() == 'running' else 'stopped'
         return services
 
     @filter_services
@@ -158,7 +156,7 @@ class ServiceNode(nodes.LazyNode):
     @filter_services
     def get_services_via_initctl(self, *args, **kwargs):
         services = {}
-        
+
         # Ubuntu & CentOS/RHEL 6 supports both sysv init and upstart
         services = self.get_services_via_initd(args, kwargs)
 
@@ -173,11 +171,8 @@ class ServiceNode(nodes.LazyNode):
         for line in status.readlines():
             m = re.match("(.*) (?:\w*)/(\w*)(?:, .*)?", line)
             try:
-                if m.group(1) not in services:
-                    if m.group(2) == 'running':
-                        services[m.group(1)] = 'running'
-                    else:
-                        services[m.group(1)] = 'stopped'
+                if m[1] not in services:
+                    services[m[1]] = 'running' if m[2] == 'running' else 'stopped'
             except:
                 pass
         return services
@@ -217,16 +212,16 @@ class ServiceNode(nodes.LazyNode):
     def get_services_via_initd(self, *args, **kwargs):
         # Only look at executable files in init.d (there is no README service)
         try:
-            possible_services = filter(lambda x: os.stat('/etc/init.d/'+x)[ST_MODE] & (S_IXUSR|S_IXGRP|S_IXOTH), os.listdir('/etc/init.d'))
+            possible_services = filter(
+                lambda x: os.stat(f'/etc/init.d/{x}')[ST_MODE]
+                & (S_IXUSR | S_IXGRP | S_IXOTH),
+                os.listdir('/etc/init.d'),
+            )
+
         except OSError as e:
             logging.exception(e);
-            pass
-
         services = {}
-        processes = []
-        for p in psutil.process_iter(attrs=['name']):
-            processes.append(p.info['name'])
-
+        processes = [p.info['name'] for p in psutil.process_iter(attrs=['name'])]
         for service in possible_services:
             status = 'unknown'
 
@@ -328,8 +323,7 @@ class ServiceNode(nodes.LazyNode):
         prioritized_stdout = sorted(stdout_builder, key=lambda x: x['priority'], reverse=True)
         info_line = ', '.join([x['info'] for x in prioritized_stdout])
 
-        stdout = '%s: %s' % (prefix, info_line)
-        return stdout
+        return f'{prefix}: {info_line}'
 
     def run_check(self, *args, **kwargs):
         target_status = self.get_target_status(kwargs)
@@ -341,7 +335,7 @@ class ServiceNode(nodes.LazyNode):
             filtered_services = [filtered_services]
 
         # Match type for services
-        match = kwargs.get('match', None)
+        match = kwargs.get('match')
         if isinstance(match, list):
             match = match[0]
 
@@ -358,17 +352,17 @@ class ServiceNode(nodes.LazyNode):
         stdout_builder = []
 
         # Remove filtered_services if we are doing anything but an exact match
-        if match == 'search' or match == 'regex':
+        if match in ['search', 'regex']:
             filtered_services = []
 
         if services:
             for service in services:
                 priority = 0
                 status = services[service]
-                builder = '%s is %s' % (service, status)
-                if not status in target_status:
+                builder = f'{service} is {status}'
+                if status not in target_status:
                     priority = 1
-                    builder = '%s (should be %s)' % (builder, ''.join(target_status))
+                    builder = f"{builder} (should be {''.join(target_status)})"
 
                 # Remove each service that has a status from the list of services the user provided
                 # so that we can display the services that can't be found ... this only works with
@@ -386,14 +380,18 @@ class ServiceNode(nodes.LazyNode):
                 returncode = 2
 
             if filtered_services:
-                for service in filtered_services:
-                    stdout_builder.append({ 'info': '%s could not be found' % service, 'priority': 0 })
+                stdout_builder.extend(
+                    {'info': f'{service} could not be found', 'priority': 0}
+                    for service in filtered_services
+                )
+
                 returncode = 3
 
             stdout = self.make_stdout(returncode, stdout_builder)
         else:
-            returncode = 3   
-            stdout = "UNKNOWN: No services found for service names: %s" % ', '.join(filtered_services)
+            returncode = 3
+            stdout = f"UNKNOWN: No services found for service names: {', '.join(filtered_services)}"
+
 
         # Get the check logging value
         try:

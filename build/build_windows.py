@@ -3,11 +3,7 @@ import shutil
 import subprocess
 import sys
 
-# Grab command line arguments
-buildtype = 'release'
-if len(sys.argv) > 1:
-    buildtype = sys.argv[1]
-
+buildtype = sys.argv[1] if len(sys.argv) > 1 else 'release'
 basedir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 nsi_store = os.path.join(basedir, 'agent', 'build_resources', 'ncpa.nsi')
 nsi = os.path.join(basedir, 'agent', 'build', 'ncpa.nsi')
@@ -19,7 +15,7 @@ with open('VERSION') as version_file:
     version = version_file.readline().strip()
 
 try:
-    os.remove(os.path.join(basedir, 'build', 'ncpa-%s.exe' % version))
+    os.remove(os.path.join(basedir, 'build', f'ncpa-{version}.exe'))
 except:
     pass
 
@@ -53,5 +49,7 @@ shutil.copy(nsi_store, nsi)
 b = subprocess.Popen([nsis, nsi], env=environ)
 b.wait()
 
-shutil.copyfile(os.path.join(basedir, 'agent', 'build', 'ncpa-%s.exe' % version),
-                os.path.join(basedir, 'build', 'ncpa-%s.exe' % version))
+shutil.copyfile(
+    os.path.join(basedir, 'agent', 'build', f'ncpa-{version}.exe'),
+    os.path.join(basedir, 'build', f'ncpa-{version}.exe'),
+)

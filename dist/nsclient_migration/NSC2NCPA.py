@@ -8,9 +8,11 @@ def getPassword():
 def getPluginDirectives():
     global nscparser, final_plugins
     dictPluginDirectives = dict(nscparser.items("Script Wrappings"))
-    plugins = ""
-    for key in dictPluginDirectives:
-        plugins += ".%s=%s\n" % (key, dictPluginDirectives[key])
+    plugins = "".join(
+        ".%s=%s\n" % (key, value)
+        for key, value in dictPluginDirectives.items()
+    )
+
     plugins = plugins.replace("%SCRIPT%", "$plugin_name")
     plugins = plugins.replace("%ARGS%", "$plugin_args")
     final_plugins = plugins.strip()
@@ -18,8 +20,7 @@ def getPluginDirectives():
 def getPassiveChecks():
     global nscparser, final_passive
     dictPassiveChecks = dict(nscparser.items("NSCA Commands"))
-    
-    passive = ""
+
     half_passive = ""
     ncpa_passive1 = "%%HOSTNAME%%|%s =%s --warning %s"
     ncpa_passive2 = " --critical %s\n"
@@ -28,9 +29,11 @@ def getPassiveChecks():
     defaults = ["cpu", "disk", "mem", "memory"]
     check_check = False
     test_check = False
-    
-    for key in dictPassiveChecks:
-        passive += "%s=%s \n" % (key, dictPassiveChecks[key])
+
+    passive = "".join(
+        "%s=%s \n" % (key, value_) for key, value_ in dictPassiveChecks.items()
+    )
+
     passive = re.split("[= ]", passive)    
 
     for i, value in enumerate(passive):
@@ -46,13 +49,17 @@ def getPassiveChecks():
             else:
                 specific_stat = "/percent"
             if "warn" in passive[i+2].lower():
-                half_passive = ncpa_passive1 % ("CPU Usage", 
-                " /cpu%s" % specific_stat, passive[i+3].replace("%", ""))
+                half_passive = ncpa_passive1 % (
+                    "CPU Usage",
+                    f" /cpu{specific_stat}",
+                    passive[i + 3].replace("%", ""),
+                )
+
                 half_passive = half_passive.strip()
             if "crit" in passive[i+4].lower():
                 half_passive += ncpa_passive2 % (passive[i+5].replace("%", ""))
                 final_passive += half_passive
-            
+
         elif "disk" in value.lower():
             if "logical" in value.lower():
                 specific_stat = "/logical"
@@ -61,13 +68,17 @@ def getPassiveChecks():
             else:
                 specific_stat = ""
             if "warn" in passive[i+2].lower():
-                half_passive = ncpa_passive1 % ("Disk Usage", 
-                " /disk%s" % specific_stat, passive[i+3].replace("%", ""))
+                half_passive = ncpa_passive1 % (
+                    "Disk Usage",
+                    f" /disk{specific_stat}",
+                    passive[i + 3].replace("%", ""),
+                )
+
                 half_passive = half_passive.strip()
             if "crit" in passive[i+4].lower():
                 half_passive += ncpa_passive2 % (passive[i+5].replace("%", ""))
                 final_passive += half_passive
-                
+
         elif "mem" in value.lower() or "memory" in value.lower():
             if "swap" in value.lower():
                 specific_stat = "/swap"
@@ -76,8 +87,12 @@ def getPassiveChecks():
             else:
                 specific_stat = ""
             if "warn" in passive[i+2].lower():
-                half_passive = ncpa_passive1 % ("Memory Usage", 
-                " /memory%s" % specific_stat, passive[i+3].replace("%", ""))
+                half_passive = ncpa_passive1 % (
+                    "Memory Usage",
+                    f" /memory{specific_stat}",
+                    passive[i + 3].replace("%", ""),
+                )
+
                 half_passive = half_passive.strip()
             if "crit" in passive[i+4].lower():
                 half_passive += ncpa_passive2 % (passive[i+5].replace("%", ""))
@@ -123,9 +138,8 @@ s = open("ncpa_template.txt").read()
 s = s.replace("{token}", final_token)
 s = s.replace("{plugins}", final_plugins)
 s = s.replace("{checks}", final_passive)
-ncpa = open("ncpa.cfg", "w")
-ncpa.write(s)
-ncpa.close()
+with open("ncpa.cfg", "w") as ncpa:
+    ncpa.write(s)
 
 
 

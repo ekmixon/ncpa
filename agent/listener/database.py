@@ -12,9 +12,9 @@ class DB(object):
 
     def __init__(self):
         if getattr(sys, u'frozen', False):
-            self.dbfile = os.path.abspath(os.path.dirname(sys.executable) + '/var/ncpa.db')
+            self.dbfile = os.path.abspath(f'{os.path.dirname(sys.executable)}/var/ncpa.db')
         else:
-            self.dbfile = os.path.abspath(os.path.dirname(__file__) + '/../var/ncpa.db')
+            self.dbfile = os.path.abspath(f'{os.path.dirname(__file__)}/../var/ncpa.db')
         self.connect()
 
     # Connect to the NCPA database
@@ -29,7 +29,7 @@ class DB(object):
         self.conn.close()
 
     def truncate(self, dbname):
-        self.cursor.execute('DROP TABLE %s' % dbname)
+        self.cursor.execute(f'DROP TABLE {dbname}')
         self.cursor.execute('VACUUM')
         self.setup()
         return True
@@ -76,7 +76,7 @@ class DB(object):
 
         # If we are doing a search... append to the query
         if search != '':
-            data += ("%" + search + "%",)
+            data += (f"%{search}%", )
             cmd += " WHERE output LIKE ?"
             where = True
 
@@ -102,8 +102,7 @@ class DB(object):
             cmd += " sender IN (" + ','.join('?'*len(senders)) + ")"
 
         self.cursor.execute(cmd, data)
-        count = self.cursor.fetchone()[0]
-        return count
+        return self.cursor.fetchone()[0]
 
     # Returns a list of distinct senders for filtering
     def get_check_senders(self):
@@ -112,11 +111,7 @@ class DB(object):
         self.cursor.execute(cmd)
         objs = self.cursor.fetchall()
 
-        senders = []
-        for obj in objs:
-            senders.append(obj[0])
-
-        return senders
+        return [obj[0] for obj in objs]
 
     # Special functions for getting check results
     def get_checks(self, search='', size=20, page=1, status='', ctype='', senders=[]):
@@ -126,7 +121,7 @@ class DB(object):
 
         # If we are doing a search... append to the query
         if search != '':
-            data += ("%" + search + "%",)
+            data += (f"%{search}%", )
             cmd += " WHERE output LIKE ?"
             where = True
 
@@ -165,11 +160,10 @@ class DB(object):
         cmd += " ORDER BY run_time_start DESC"
 
         # Apply limiting based on page and size
-        if page < 1:
-            page = 1
+        page = max(page, 1)
         start = (page - 1) * size
         limit = "%d,%d" % (start, size)
-        cmd += " LIMIT " + limit
+        cmd += f" LIMIT {limit}"
 
         self.cursor.execute(cmd, data)
 
@@ -180,12 +174,7 @@ class DB(object):
         # Get a real list of checks
         checks = []
         for obj in objs:
-            i = 0
-            check = { }
-            for col in columns:
-                check[col[0]] = obj[i]
-                i += 1
-
+            check = {col[0]: obj[i] for i, col in enumerate(columns)}
             # Process output types
             output = check['output'].split("\n")
             check['output'] = output[0]

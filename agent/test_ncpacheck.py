@@ -116,7 +116,7 @@ class TestNCPACheck(unittest.TestCase):
         starts_with_slash_metric = u'/cpu/percent'
         starts_with_metric = u'cpu/percent'
 
-        expected_url = starts_with_slash_api + '/'
+        expected_url = f'{starts_with_slash_api}/'
 
         self.assertEqual(expected_url, passive.ncpacheck.NCPACheck.normalize_api_url(starts_with_slash_api))
         self.assertEqual(expected_url, passive.ncpacheck.NCPACheck.normalize_api_url(starts_with_slash_metric))

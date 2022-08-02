@@ -39,16 +39,13 @@ class Handler(nagioshandler.NagiosHandler):
                           check.hostname,
                           check.servicename,
                           check.instruction)
-        if check.servicename == '__HOST__':
-            check_type = 'host'
-        else:
-            check_type = 'service'
+        check_type = 'host' if check.servicename == '__HOST__' else 'service'
         item = KafkaTopicItem()
         item.hostname = unicode(check.hostname)
         item.state = unicode(returncode)
         item.output = unicode(stdout)
         item.check_type = check_type
-        if not check_type == 'host':
+        if check_type != 'host':
             item.servicename = check.servicename;
         return item
 
@@ -63,15 +60,14 @@ class Handler(nagioshandler.NagiosHandler):
 
     @staticmethod
     def format_for_kafka(self, item):
-        data = {
+        return {
             'hostname': item.hostname,
             'servicename': item.servicename,
             'check_type': item.check_type,
             'check_time': item.check_time,
             'state': item.state,
-            'output': item.output
+            'output': item.output,
         }
-        return data
 
     def run(self, run_time):
         """
@@ -88,15 +84,19 @@ class Handler(nagioshandler.NagiosHandler):
                 item.hostname = self.get_kafka_hostname(item)
                 itemlist.append(item)
 
-        if len(itemlist) > 0:
+        if itemlist:
             try:
                 logging.info('Connect to Kafka Server')
-                producer = KafkaProducer(bootstrap_servers=['{}'.format(self.str_kafakhosts)], client_id=self.str_client_id)
+                producer = KafkaProducer(
+                    bootstrap_servers=[f'{self.str_kafakhosts}'],
+                    client_id=self.str_client_id,
+                )
+
             except KafkaError:
                 logging.warn(
-                    'Problem to connect Kafka Server: {} with Topic: {} and Clientname {} '.format(self.str_kafakhosts,
-                                                                                                   self.str_topic,
-                                                                                                   self.str_client_id))
+                    f'Problem to connect Kafka Server: {self.str_kafakhosts} with Topic: {self.str_topic} and Clientname {self.str_client_id} '
+                )
+
             for item in itemlist:
                 producer.send(self.str_topic, key=str(item.hostname), value=json.dumps(self.format_for_kafka(self, item)))
 

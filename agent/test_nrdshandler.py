@@ -50,8 +50,11 @@ class NRDSHandler(TestCase):
         self.n.get_plugin(**testing_dict)
         expected_abs_plugin_path = os.path.join(plugin_path, 'pluginname')
 
-        self.assertTrue(os.path.isfile(expected_abs_plugin_path),
-                        "Plugin was not created at testing site: %s" % expected_abs_plugin_path)
+        self.assertTrue(
+            os.path.isfile(expected_abs_plugin_path),
+            f"Plugin was not created at testing site: {expected_abs_plugin_path}",
+        )
+
 
         with open(expected_abs_plugin_path, 'r') as plugin_test:
             l = plugin_test.readlines()[0].strip()

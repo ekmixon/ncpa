@@ -10,10 +10,9 @@ import packaging.specifiers
 import packaging.requirements
 
 def remove_empty_file(file):
-    if os.path.exists(file):
-        if os.stat(file).st_size == 0:
-            os.remove(file)
-            return True
+    if os.path.exists(file) and os.stat(file).st_size == 0:
+        os.remove(file)
+        return True
     return False
 
 def create_self_signed_cert(cert_dir, cert_file, key_file):

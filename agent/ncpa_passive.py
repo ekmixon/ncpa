@@ -33,23 +33,23 @@ class Passive(ncpadaemon.Daemon):
         run_time = time.time()
 
         # Empty passive handlers will skip trying to run any handlers
-        if handlers[0] == 'None' or handlers[0] == '':
+        if handlers[0] in ['None', '']:
             return
 
         for handler in handlers:
             try:
                 handler = handler.strip()
-                module_name = 'passive.%s' % handler
+                module_name = f'passive.{handler}'
                 __import__(module_name)
                 tmp_handler = sys.modules[module_name]
             except ImportError as e:
-                logging.error('Could not import module passive.%s, skipping. %s' % (handler, str(e)))
+                logging.error(f'Could not import module passive.{handler}, skipping. {str(e)}')
                 logging.exception(e)
             else:
                 try:
                     ins_handler = tmp_handler.Handler(self.config_parser)
                     ins_handler.run(run_time)
-                    logging.debug(u'Successfully ran handler %s' % handler)
+                    logging.debug(f'Successfully ran handler {handler}')
                 except Exception as e:
                     logging.exception(e)
 

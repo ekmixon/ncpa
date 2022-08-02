@@ -61,17 +61,13 @@ class Handler(nagioshandler.NagiosHandler):
                           check.servicename,
                           check.instruction)
 
-        if check.servicename == '__HOST__':
-            check_type = 'host'
-        else:
-            check_type = 'service'
-
+        check_type = 'host' if check.servicename == '__HOST__' else 'service'
         check_result = Handler.make_tag(u'checkresult', tag_attr={'type': check_type})
         hostname = Handler.make_tag(u'hostname', unicode(check.hostname))
         state = Handler.make_tag(u'state', unicode(returncode))
         output = Handler.make_tag(u'output', unicode(stdout))
 
-        if not check_type == 'host':
+        if check_type != 'host':
             servicename = Handler.make_tag(u'servicename', check.servicename)
             check_result.appendChild(servicename)
 

@@ -51,8 +51,7 @@ class PluginNode(nodes.RunnableNode):
         return copy.deepcopy(self)
 
     def walk(self, config, **kwargs):
-        result = self.execute_plugin(config, **kwargs)
-        return result
+        return self.execute_plugin(config, **kwargs)
 
     def get_plugin_instructions(self, config):
         """Returns the instruction to use for the given plugin.
@@ -159,16 +158,10 @@ class PluginNode(nodes.RunnableNode):
         command = []
 
         # Add sudo for commands that need to run as sudo
-        if os.name == 'posix':
-            if self.name in sudo_plugins:
-                command.append('sudo')
+        if os.name == 'posix' and self.name in sudo_plugins:
+            command.append('sudo')
 
-        # Set shlex to use posix mode on posix machines (so that we can pass something like
-        # --metric='disk/logical/|' and have it properly format quotes)
-        mode = False
-        if os.name == 'posix':
-            mode = True
-        
+        mode = os.name == 'posix'
         lexer = shlex.shlex(instruction, posix=mode)
         lexer.whitespace_split = True
 
@@ -176,12 +169,11 @@ class PluginNode(nodes.RunnableNode):
             if '$plugin_name' in x:
                 replaced = x.replace('$plugin_name', self.plugin_abs_path)
                 command.append(replaced)
-            elif '$plugin_args' == x:
+            elif x == '$plugin_args':
                 if self.arguments:
                     args = shlex.shlex(' '.join(self.arguments), posix=mode)
                     args.whitespace_split = True
-                    for a in args:
-                        command.append(a)
+                    command.extend(iter(args))
             else:
                 command.append(x)
         return command
@@ -221,6 +213,5 @@ class PluginAgentNode(nodes.ParentNode):
 
     def walk(self, *args, **kwargs):
         self.setup_plugin_children(kwargs['config'])
-        plugins = list(self.children.keys())
-        plugins.sort()
+        plugins = sorted(self.children.keys())
         return { self.name: plugins }

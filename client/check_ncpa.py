@@ -71,7 +71,7 @@ class HTTPError(ConnectionError):
 
 
 def parse_args():
-    version = 'check_ncpa.py, Version %s' % __VERSION__
+    version = f'check_ncpa.py, Version {__VERSION__}'
 
     parser = optparse.OptionParser()
     parser.add_option("-H", "--hostname", help="The hostname to be connected to.")
@@ -127,7 +127,7 @@ def parse_args():
         print(version)
         sys.exit(0)
 
-    if options.arguments and options.metric and not 'plugin' in options.metric:
+    if options.arguments and options.metric and 'plugin' not in options.metric:
         parser.print_help()
         parser.error('You cannot specify arguments without running a custom plugin.')
 
@@ -152,7 +152,7 @@ def parse_args():
 def get_url_from_options(options):
     host_part = get_host_part_from_options(options)
     arguments = get_arguments_from_options(options)
-    return '%s?%s' % (host_part, arguments)
+    return f'{host_part}?{arguments}'
 
 
 def get_host_part_from_options(options):
@@ -162,18 +162,13 @@ def get_host_part_from_options(options):
     hostname = options.hostname
     port = options.port
 
-    if not options.metric is None:
-        metric = urlquote(options.metric)
-    else:
-        metric = ''
-
+    metric = urlquote(options.metric) if options.metric is not None else ''
     arguments = get_check_arguments_from_options(options)
-    if not metric and not arguments:
-        api_address = 'https://%s:%d/api' % (hostname, port)
-    else:
-        api_address = 'https://%s:%d/api/%s/%s' % (hostname, port, metric, arguments)
-
-    return api_address
+    return (
+        'https://%s:%d/api' % (hostname, port)
+        if not metric and not arguments
+        else 'https://%s:%d/api/%s/%s' % (hostname, port, metric, arguments)
+    )
 
 
 def get_check_arguments_from_options(options):
@@ -186,11 +181,10 @@ def get_check_arguments_from_options(options):
     arguments = options.arguments
     if arguments is None:
         return ''
-    else:
-        lex = shlex.shlex(arguments)
-        lex.whitespace_split = True
-        arguments = '/'.join([urlquote(x, safe='') for x in lex])
-        return arguments
+    lex = shlex.shlex(arguments)
+    lex.whitespace_split = True
+    arguments = '/'.join([urlquote(x, safe='') for x in lex])
+    return arguments
 
 
 def get_arguments_from_options(options, **kwargs):
@@ -211,7 +205,7 @@ def get_arguments_from_options(options, **kwargs):
         arguments['check'] = 1
         arguments['unit'] = options.unit
 
-    args = list((k, v) for k, v in list(arguments.items()) if v is not None)
+    args = [(k, v) for k, v in list(arguments.items()) if v is not None]
 
     # Get the options (comma separated)
     if options.queryargs:
@@ -235,7 +229,7 @@ def get_json(options):
     url = get_url_from_options(options)
 
     if options.verbose:
-        print('Connecting to: ' + url)
+        print(f'Connecting to: {url}')
 
     try:
 
@@ -276,9 +270,8 @@ def get_json(options):
             arr['returncode'] = arr['stdout']
             arr['stdout'] = tmp
 
-    # If we recieve and error, return critical and give out error text
     elif 'error' in arr:
-        arr['stdout'] = 'CRITICAL: %s' % arr['error']
+        arr['stdout'] = f"CRITICAL: {arr['error']}"
         arr['returncode'] = 2
 
     return arr
@@ -319,19 +312,18 @@ def main():
 
     try:
         if options.version:
-            stdout = 'The version of this plugin is %s' % __VERSION__
+            stdout = f'The version of this plugin is {__VERSION__}'
             return stdout, 0
 
         info_json = get_json(options)
 
         if options.list:
             return show_list(info_json)
-        else:
-            stdout, returncode = run_check(info_json)
+        stdout, returncode = run_check(info_json)
 
-            if options.performance and stdout.find("|") == -1:
-                stdout = "{0} | 'status'={1};1;2;;".format(stdout, returncode)
-            return stdout, returncode
+        if options.performance and stdout.find("|") == -1:
+            stdout = "{0} | 'status'={1};1;2;;".format(stdout, returncode)
+        return stdout, returncode
     except (HTTPError, URLError) as e:
         if options.debug:
             return 'The stack trace:\n' + traceback.format_exc(), 3

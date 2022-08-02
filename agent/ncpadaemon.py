@@ -27,11 +27,6 @@ class Daemon(object):
         as the python module holding the subclass, ending in .conf
         instead of .py.
         """
-        if not hasattr(self, u'default_conf'):
-            # Grabs the filename that the Daemon subclass resides in...
-            #self.daemon_file = sys.modules[self.__class__.__module__].__file__
-            #self.default_conf = self.daemon_file.rpartition('.')[0] + '.conf'
-            pass
         if not hasattr(self, u'section'):
             self.section = u'daemon'
 
@@ -111,8 +106,7 @@ class Daemon(object):
                      help=u'Print version number')
         self.options, self.args = p.parse_args()
         if not os.path.exists(self.options.config_filename):
-            p.error(u'configuration file not found: %s'
-                    % self.options.config_filename)
+            p.error(f'configuration file not found: {self.options.config_filename}')
 
     def read_basic_config(self):
         u"""Read basic options from the daemon config file"""
@@ -222,7 +216,7 @@ class Daemon(object):
             try:
                 os.kill(pid, signal.SIGTERM)
                 # wait for a moment to see if the process dies
-                for n in xrange(10):
+                for _ in xrange(10):
                     time.sleep(0.25)
                     os.kill(pid, 0)
             except OSError as err:
@@ -243,12 +237,17 @@ class Daemon(object):
                     sys.exit(u"NCPA %s: Service is running. (pid %d)" % (self.section.title(), pid))
                 except OSError as err:
                     if err.errno == errno.ESRCH:
-                        sys.exit(u"NCPA %s: Service is not running but pid file exists." % self.section.title())
+                        sys.exit(
+                            f"NCPA {self.section.title()}: Service is not running but pid file exists."
+                        )
+
         else:
-            sys.exit(u"NCPA %s: Service is not running." % self.section.title())
+            sys.exit(f"NCPA {self.section.title()}: Service is not running.")
 
     def version(self):
-        sys.exit(u"ncpa_%s version, %s" % (self.section.title().lower(), listener.server.__VERSION__))
+        sys.exit(
+            f"ncpa_{self.section.title().lower()} version, {listener.server.__VERSION__}"
+        )
 
     def prepare_dirs(self):
         u"""Ensure the log and pid file directories exist and are writable"""
@@ -279,12 +278,8 @@ class Daemon(object):
     def chown(self, fn):
         u"""Change the ownership of a file to match the daemon uid/gid"""
         if self.uid or self.gid:
-            uid = self.uid
-            if not uid:
-                uid = os.stat(fn).st_uid
-            gid = self.gid
-            if not gid:
-                gid = os.stat(fn).st_gid
+            uid = self.uid or os.stat(fn).st_uid
+            gid = self.gid or os.stat(fn).st_gid
             try:
                 os.chown(fn, uid, gid)
             except OSError as err:
@@ -363,7 +358,7 @@ class Daemon(object):
         else:
             check = os.path.dirname(self.pidfile)
         if not os.access(check, os.W_OK):
-            msg = u'unable to write to pidfile %s' % self.pidfile
+            msg = f'unable to write to pidfile {self.pidfile}'
             sys.exit(msg)
 
     def write_pid(self):

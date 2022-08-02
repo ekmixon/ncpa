@@ -23,7 +23,7 @@ def send_request(url, **kwargs):
     except Exception as ex:
         logging.exception(ex)
     else:
-        logging.debug('Content response from URL: %s' % unicode(r.content))
+        logging.debug(f'Content response from URL: {unicode(r.content)}')
         return r.content
 
     return None

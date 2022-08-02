@@ -75,7 +75,7 @@ class WindowsLogsNode(nodes.LazyNode):
     @staticmethod
     def get_logs(logtypes, filters, *args, **kwargs):
         logs = {}
-        server = kwargs.get('server', None)
+        server = kwargs.get('server')
         if server:
             server = server[0]
 
@@ -90,18 +90,21 @@ class WindowsLogsNode(nodes.LazyNode):
 
         # If the logs are empty, and we had no name selected, give a good
         # explanation of what is going on instead of being empty
-        if not logtypes and not logs:
+        if logtypes or logs:
+            return logs, 'logs'
+        else:
             return { 'message': 'No log type selected. Select log types using \'name=<type>\'. Example: api/logs?name=System. Multiple log types can be selected.' }
-
-        return logs, 'logs'
 
     def run_check(self, *args, **kwargs):
         try:
             logs = self.walk(*args, **kwargs)['logs'][0]
             log_names = sorted(logs.keys())
         except Exception as exc:
-            return { 'stdout': 'UNKNOWN: %s, cannot continue meaningfully.' % exc.message,
-                     'returncode': 3 }
+            return {
+                'stdout': f'UNKNOWN: {exc.message}, cannot continue meaningfully.',
+                'returncode': 3,
+            }
+
 
         log_counts = [len(logs[x]) for x in log_names]
 
@@ -122,17 +125,17 @@ class WindowsLogsNode(nodes.LazyNode):
 
         log_names.append('Total Count')
         log_counts.append(sum(log_counts))
-        logged_after = kwargs.get('logged_after', None)
-        if not logged_after is None:
+        logged_after = kwargs.get('logged_after')
+        if logged_after is not None:
             logged_after = logged_after[0]
         nice_timedelta = self.translate_timedelta(logged_after)
 
         perfdata = ' '.join(["'%s'=%d;%s;%s;" % (name, count, ''.join(self.warning), ''.join(self.critical)) for name, count in
                              zip(log_names, log_counts)])
         info = ', '.join(['%s has %d logs' % (name, count) for name, count in zip(log_names, log_counts)])
-        info_line = '%s: %s (Time range - %s)' % (prefix, info, nice_timedelta)
+        info_line = f'{prefix}: {info} (Time range - {nice_timedelta})'
 
-        stdout = '%s | %s' % (info_line, perfdata)
+        stdout = f'{info_line} | {perfdata}'
 
         # Long output including actual log messages
         for n in log_names:
@@ -163,67 +166,61 @@ class WindowsLogsNode(nodes.LazyNode):
         if not time_delta:
             return 'last 24 hours'
         num, suffix = time_delta[:-1], time_delta[-1]
-        if suffix == 's':
-            nice_name = 'second'
-        elif suffix == 'm':
-            nice_name = 'minute'
-        elif suffix == 'h':
-            nice_name = 'hour'
+        if suffix == 'M':
+            nice_name = 'month'
         elif suffix == 'd':
             nice_name = 'day'
+        elif suffix == 'h':
+            nice_name = 'hour'
+        elif suffix == 'm':
+            nice_name = 'minute'
+        elif suffix == 's':
+            nice_name = 'second'
         elif suffix == 'w':
             nice_name = 'week'
-        elif suffix == 'M':
-            nice_name = 'month'
         if int(num) > 1:
             nice_name += 's'
-        return 'last %s %s' % (num, nice_name)
+        return f'last {num} {nice_name}'
 
     def set_log_check(self, request_args):
         log_check = request_args.get('type', 'all')
-        if log_check != 'all':
-            self.log_check = 'individual'
-        else:
-            self.log_check = 'all'
+        self.log_check = 'individual' if log_check != 'all' else 'all'
 
     def is_warning(self, log_counts, log_names):
         if not self.warning:
             return False
 
-        warnings = []
-
         if self.log_check == 'all':
             return self.is_within_range(self.warning, sum(log_counts))
-        else:
-            for count in log_counts:
-                if self.is_within_range(self.warning, count):
-                    warnings.append(True)
-                else:
-                    warnings.append(False)
-            return any(warnings)
+        warnings = []
+
+        for count in log_counts:
+            if self.is_within_range(self.warning, count):
+                warnings.append(True)
+            else:
+                warnings.append(False)
+        return any(warnings)
 
     def is_critical(self, log_counts, log_names):
         if not self.critical:
             return False
 
-        criticals = []
-
         if self.log_check == 'all':
             return self.is_within_range(self.critical, sum(log_counts))
-        else:
-            for count in log_counts:
-                if self.is_within_range(self.critical, count):
-                    criticals.append(True)
-                else:
-                    criticals.append(False)
-            return any(criticals)
+        criticals = []
+
+        for count in log_counts:
+            if self.is_within_range(self.critical, count):
+                criticals.append(True)
+            else:
+                criticals.append(False)
+        return any(criticals)
 
 
 def get_logtypes(request_args):
-    logtypes = request_args.get('name', [])
     #if logtypes is None:
     #    logtypes = ['Application', 'Security', 'Setup', 'System', 'Forwarded Events']
-    return logtypes
+    return request_args.get('name', [])
 
 
 def get_filter_dict(request_args):
@@ -243,10 +240,7 @@ def get_filter_dict(request_args):
         elif key == 'severity':
             fdict['EventType'] = [EVENT_TYPE.get(x, 'UNKNOWN') for x in value]
         elif key == 'logged_after':
-            if isinstance(value, (str, unicode)):
-                logged_after = value
-            else:
-                logged_after = value[0]
+            logged_after = value if isinstance(value, (str, unicode)) else value[0]
             logged_after = get_datetime_from_date_input(logged_after)
             fdict['logged_after'] = logged_after
     return fdict
@@ -306,8 +300,7 @@ def datetime_from_event_date(evt_date):
     doesn't take care of this, but alas, here we are.
     """
     date_string = str(evt_date)
-    time_generated = datetime.datetime.strptime(date_string, '%m/%d/%y %H:%M:%S')
-    return time_generated
+    return datetime.datetime.strptime(date_string, '%m/%d/%y %H:%M:%S')
 
 
 def is_interesting_event(event, name, filters):
@@ -331,15 +324,13 @@ def is_interesting_event(event, name, filters):
                     return False
 
             # Do normal ==
-            if not value is None:
-                if str(restriction) != str(value):
-                    return False
+            if value is not None and str(restriction) != str(value):
+                return False
     return True
 
 
 def normalize_event(event, name):
-    safe_log = {}
-    safe_log['message'] = win32evtlogutil.SafeFormatMessage(event, name)
+    safe_log = {'message': win32evtlogutil.SafeFormatMessage(event, name)}
     safe_log['event_id'] = str(event.EventID & 0x1FFFFFFF)
     safe_log['computer_name'] = str(event.ComputerName)
     safe_log['category'] = str(event.EventCategory)
@@ -362,8 +353,7 @@ def get_event_logs(server, name, filters):
 
     try:
         while True:
-            events = win32evtlog.ReadEventLog(handle, flags, 0)
-            if events:
+            if events := win32evtlog.ReadEventLog(handle, flags, 0):
                 for event in events:
                     time_generated = datetime_from_event_date(event.TimeGenerated)
                     if time_generated < logged_after:
@@ -383,13 +373,9 @@ def get_event_logs(server, name, filters):
 def tail_method(last_ts, server=None, *args, **kwargs):
     filters = get_filter_dict(kwargs)
     filters['logged_after'] = datetime.timedelta(seconds=10)
-    log_names = kwargs.get('name', None)
+    log_names = kwargs.get('name')
 
-    if log_names is None:
-        name = 'System'
-    else:
-        name = log_names[0]
-
+    name = 'System' if log_names is None else log_names[0]
     logs = get_event_logs(server, name, filters)
     newest_ts = last_ts
     non_dup_logs = []

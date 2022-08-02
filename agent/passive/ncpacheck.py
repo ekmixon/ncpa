@@ -35,7 +35,7 @@ class NCPACheck(object):
 
         # Set the next run for this specific check
         key = hashlib.sha256(self.hostname + self.servicename).hexdigest()
-        if not key in NEXT_RUN:
+        if key not in NEXT_RUN:
             NEXT_RUN[key] = 0
 
     @staticmethod
@@ -109,7 +109,7 @@ class NCPACheck(object):
         :rtype: str
         """
         query = urllib.urlencode(api_args)
-        complete_api_url = "{}?{}".format(api_url, query)
+        complete_api_url = f"{api_url}?{query}"
 
         logging.debug("Access the API with %s", complete_api_url)
 
@@ -133,9 +133,7 @@ class NCPACheck(object):
         nrun = NEXT_RUN[key]
 
         logging.debug('Next run set to be at %s', nrun)
-        if nrun <= time.time():
-            return True
-        return False
+        return nrun <= time.time()
 
     def set_next_run(self, run_time):
         """
@@ -243,11 +241,11 @@ class NCPACheck(object):
         if api_url.startswith('/api'):
             normalized = api_url
         elif api_url.startswith('api'):
-            normalized = "/{}".format(api_url)
+            normalized = f"/{api_url}"
         elif api_url.startswith('/'):
-            normalized = "/api{}".format(api_url)
+            normalized = f"/api{api_url}"
         else:
-            normalized = "/api/{}".format(api_url)
+            normalized = f"/api/{api_url}"
 
         if not normalized.endswith('/'):
             normalized += '/'
@@ -267,7 +265,5 @@ class NCPACheck(object):
             if len(v) == 1:
                 api_args.append((x, v[0]))
             else:
-                for val in v:
-                    api_args.append((x, val))
-
+                api_args.extend((x, val) for val in v)
         return api_url, api_args

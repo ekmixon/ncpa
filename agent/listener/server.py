@@ -115,19 +115,16 @@ def get_unmapped_ip(ip):
     """
 
     try:
-        # check if ip is IPv6
-        if ipaddress.ip_address(unicode(ip)).version == 6:
-            # check if ip is a IPv4-mapped IPv6 address
-            if ipaddress.IPv6Address(unicode(ip)).ipv4_mapped is not None:
-                # return the ordinary IPv4 address
-                return str(ipaddress.IPv6Address(unicode(ip)).ipv4_mapped)
-            else:
-                # return the IPv6 address
-                return str(ipaddress.IPv6Address(unicode(ip)))
-        else:
+        if ipaddress.ip_address(unicode(ip)).version != 6:
             # return the IPv4 address
             return str(ipaddress.ip_address(unicode(ip)))
-    # Needed for passive checks, in this case ip is 'Internal'
+        # check if ip is a IPv4-mapped IPv6 address
+        if ipaddress.IPv6Address(unicode(ip)).ipv4_mapped is not None:
+            # return the ordinary IPv4 address
+            return str(ipaddress.IPv6Address(unicode(ip)).ipv4_mapped)
+        else:
+            # return the IPv6 address
+            return str(ipaddress.IPv6Address(unicode(ip)))
     except ValueError as e:
         logging.debug(e)
         return ip
@@ -230,10 +227,12 @@ def before_request():
 
 @listener.after_request
 def apply_headers(response):
-    allowed_sources = get_config_value('listener', 'allowed_sources')
-    if allowed_sources:
-        response.headers["X-Frame-Options"] = "ALLOW-FROM %s" % allowed_sources
-        response.headers["Content-Security-Policy"] = "frame-ancestors %s" % allowed_sources
+    if allowed_sources := get_config_value('listener', 'allowed_sources'):
+        response.headers["X-Frame-Options"] = f"ALLOW-FROM {allowed_sources}"
+        response.headers[
+            "Content-Security-Policy"
+        ] = f"frame-ancestors {allowed_sources}"
+
     else:
         response.headers["X-Frame-Options"] = "SAMEORIGIN"
         response.headers["Content-Security-Policy"] = "frame-ancestors 'self'"
@@ -244,12 +243,13 @@ def apply_headers(response):
 @listener.context_processor
 def inject_variables():
     admin_gui_access = int(get_config_value('listener', 'admin_gui_access', 0))
-    windows = False
-    if os.name == 'nt':
-        windows = True
-    values = { 'admin_visible': admin_gui_access, 'is_windows': windows,
-               'no_nav': False, 'flash_msg': False }
-    return values
+    windows = os.name == 'nt'
+    return {
+        'admin_visible': admin_gui_access,
+        'is_windows': windows,
+        'no_nav': False,
+        'flash_msg': False,
+    }
 
 
 @listener.template_filter('strftime')
@@ -333,10 +333,11 @@ def requires_admin_auth(f):
         if admin_password is None:
             session['admin_logged'] = True
 
-        if not session.get('admin_logged', False):
-            return redirect(url_for('admin_login'))
-
-        return f(*args, **kwargs)
+        return (
+            f(*args, **kwargs)
+            if session.get('admin_logged', False)
+            else redirect(url_for('admin_login'))
+        )
 
     return admin_auth_decoration
 
@@ -355,12 +356,8 @@ def login():
 
     ncpa_token = listener.config['iconfig'].get('api', 'community_string')
 
-    # Admin password
-    has_admin_password = False
     admin_password = get_config_value('listener', 'admin_password', None)
-    if admin_password is not None:
-        has_admin_password = True
-
+    has_admin_password = admin_password is not None
     # Get GUI admin auth only variable
     admin_auth_only = int(get_config_value('listener', 'admin_auth_only', 0))
 
@@ -384,23 +381,21 @@ def login():
         session['admin_logged'] = True
 
     if session.get('logged', False):
-        if url:
-            session['redirect'] = None
-            return redirect(url)
-        else:
+        if not url:
             return redirect(url_for('index'))
-    
-    # Display error messages depending on what was given
-    if token is not None:
-        if not admin_auth_only:
-            if token != ncpa_token or token != admin_password:
-                template_args['error'] = 'Invalid token or password.'
-        else:
-            if token == ncpa_token:
-                template_args['error'] = 'Admin authentication only.'
-            else:
-                template_args['error'] = 'Invalid password.'
 
+        session['redirect'] = None
+        return redirect(url)
+    if token is not None:
+        if admin_auth_only:
+            template_args['error'] = (
+                'Admin authentication only.'
+                if token == ncpa_token
+                else 'Invalid password.'
+            )
+
+        elif token != ncpa_token or token != admin_password:
+            template_args['error'] = 'Invalid token or password.'
     return render_template('login.html', **template_args)
 
 
@@ -445,17 +440,19 @@ def logout():
 
 @listener.errorhandler(404)
 def error_page_not_found(e):
-    template_args = {}
-    if not session.get('logged', False):
-        template_args = { 'hide_page_links': True }
+    template_args = (
+        {} if session.get('logged', False) else {'hide_page_links': True}
+    )
+
     return render_template('errors/404.html', **template_args), 404
 
 
 @listener.errorhandler(500)
 def error_page_not_found(e):
-    template_args = {}
-    if not session.get('logged', False):
-        template_args = { 'hide_page_links': True }
+    template_args = (
+        {} if session.get('logged', False) else {'hide_page_links': True}
+    )
+
     return render_template('errors/500.html', **template_args), 500
 
 
@@ -483,10 +480,14 @@ def gui_index():
 @listener.route('/gui/checks')
 @requires_auth
 def checks():
-    data = { 'filters': False, 'show_fp': False, 'show_lp': False }
     db = database.DB()
 
-    data['senders'] = db.get_check_senders()
+    data = {
+        'filters': False,
+        'show_fp': False,
+        'show_lp': False,
+        'senders': db.get_check_senders(),
+    }
 
     search = request.values.get('search', '')
     size = int(request.values.get('size', 20))
@@ -514,9 +515,7 @@ def checks():
     total = db.get_checks_count(search, status=status, senders=check_senders)
 
     total_pages = int(math.ceil(float(total)/size))
-    if total_pages < 1:
-        total_pages = 1
-
+    total_pages = max(total_pages, 1)
     data['total_pages'] = format(total_pages, ",d")
     data['total'] = format(total, ",d")
 
@@ -524,25 +523,25 @@ def checks():
     link = 'checks?page='
     link_vals = ''
     if size != 20:
-        link_vals += '&size=' + str(size)
+        link_vals += f'&size={size}'
     if status != '':
-        link_vals += '&status=' + str(status)
+        link_vals += f'&status={str(status)}'
     if ctype != '':
-        link_vals += '&ctype=' + str(status)
+        link_vals += f'&ctype={str(status)}'
     if search != '':
-        link_vals += '&search=' + str(search)
+        link_vals += f'&search={str(search)}'
     if len(check_senders) > 0:
         for sender in check_senders:
-            link_vals += '&check_senders=' + sender
+            link_vals += f'&check_senders={sender}'
 
     # Get list of pages to display
     data['page_links'] = { page: link + str(page) }
     for x in range(1, 5):
-        if not (page_raw - x) <= 0:
+        if page_raw - x > 0:
             data['page_links'][page_raw - x] = link + str(page - x) + link_vals
             if page_raw > 5:
                 data['show_fp'] = True
-                data['show_fp_link'] = link + '1' + link_vals
+                data['show_fp_link'] = f'{link}1{link_vals}'
         if not (page_raw + x) > total_pages:
             data['page_links'][page_raw + x] = link + str(page + x) + link_vals
             if page_raw < total_pages:
@@ -617,8 +616,7 @@ def help_section():
 @listener.route('/gui/admin/', methods=['GET', 'POST'])
 @requires_admin_auth
 def admin():
-    tmp_args = {}
-    tmp_args['config'] = listener.config['iconfig']
+    tmp_args = {'config': listener.config['iconfig']}
     return render_template('admin/index.html', **tmp_args)
 
 
@@ -847,14 +845,8 @@ def top_websocket():
             pnode = processes.get_node()
             procs = pnode.get_process_dict()
 
-            process_list = []
+            process_list = [process for process in procs if process['pid'] != 0]
 
-            for process in procs:
-                if process['pid'] == 0:
-                    continue
-                process_list.append(process)
-
-            
             json_val = json.dumps({'load': load, 'vir': vir_mem, 'swap': swap_mem, 'process': process_list},
                                   encoding=encoding)
 
@@ -908,12 +900,7 @@ def top():
     highlight = request.values.get('highlight', None)
     warning = request.values.get('warning', 0)
     critical = request.values.get('critical', 0)
-    info = {}
-
-    if highlight is None:
-        info['highlight'] = None
-    else:
-        info['highlight'] = highlight
+    info = {'highlight': None if highlight is None else highlight}
 
     try:
         info['warning'] = int(warning)
@@ -936,11 +923,8 @@ def top():
 @listener.route('/tail')
 @requires_token_or_auth
 def tail(accessor=None):
-    info = { }
-
     query_string = request.query_string
-    info['query_string'] = urllib.quote(query_string)
-
+    info = {'query_string': urllib.quote(query_string)}
     return render_template('tail.html', **info)
 
 
@@ -965,17 +949,13 @@ def graph(accessor=None):
     node = psapi.getter(accessor, config, request.path, request.args, cache=True)
     prop = node.name
 
-    if request.values.get('delta'):
-        info['delta'] = 1
-    else:
-        info['delta'] = 0
-
+    info['delta'] = 1 if request.values.get('delta') else 0
     info['graph_prop'] = prop
     query_string = request.query_string
     info['query_string'] = urllib.quote(query_string)
 
     url = urlparse.urlparse(request.url)
-    info['load_from'] = url.scheme + '://' + url.netloc
+    info['load_from'] = f'{url.scheme}://{url.netloc}'
     info['load_websocket'] = url.netloc
 
     # Generate page and add cross-domain loading
@@ -1031,8 +1011,10 @@ def nrdp():
             response = requests.get(forward_to, params=request.args)
         else:
             response = requests.post(forward_to, params=request.form)
-        resp = Response(response.content, 200, mimetype=response.headers['content-type'])
-        return resp
+        return Response(
+            response.content, 200, mimetype=response.headers['content-type']
+        )
+
     except Exception as exc:
         logging.exception(exc)
         return error(msg=unicode(exc))
@@ -1076,7 +1058,7 @@ def api(accessor=''):
     sane_args['config'] = config
 
     # Check if we are running a check or not
-    if not 'check' in sane_args:
+    if 'check' not in sane_args:
         sane_args['check'] = request.args.get('check', False)
 
     # Try to get the node that was specified
@@ -1084,15 +1066,13 @@ def api(accessor=''):
         node = psapi.getter(accessor, config, full_path, request.args)
     except ValueError as exc:
         logging.exception(exc)
-        return error(msg='Referencing node that does not exist: %s' % accessor)
+        return error(msg=f'Referencing node that does not exist: {accessor}')
     except IndexError as exc:
         # Hide the actual exception and just show nice output to users about changes in the API functionality
         return error(msg='Could not access location specified. Changes to API calls were made in NCPA v1.7, check documentation on making API calls.')
 
-    # Check for default unit in the config values
-    default_units = get_config_value('general', 'default_units')
-    if default_units:
-        if not 'units' in sane_args:
+    if default_units := get_config_value('general', 'default_units'):
+        if 'units' not in sane_args:
             sane_args['units'] = default_units
 
     if sane_args['check']:

@@ -6,7 +6,7 @@ __test__ = False
 # Grab command line arguments
 opt = sys.argv[1]
 
-if opt == 'listener' or opt == None:
+if opt == 'listener' or opt is None:
 	listener = ncpa_windows.Listener(debug=True)
 	listener.Initialize(None)
 	listener.start()

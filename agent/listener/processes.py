@@ -47,41 +47,36 @@ class ProcessNode(nodes.LazyNode):
     @staticmethod
     def get_sleep(request_args):
         sleep = request_args.get('sleep', None)
-        if sleep:
-            if isinstance(sleep, list):
-                sleep = float(sleep[0])
+        if sleep and isinstance(sleep, list):
+            sleep = float(sleep[0])
         return sleep
 
     @staticmethod
     def get_cpu_percent(request_args):
         cpu_percent = request_args.get('cpu_percent', None)
-        if cpu_percent:
-            if isinstance(cpu_percent, list):
-                cpu_percent = float(cpu_percent[0])
+        if cpu_percent and isinstance(cpu_percent, list):
+            cpu_percent = float(cpu_percent[0])
         return cpu_percent
 
     @staticmethod
     def get_mem_percent(request_args):
         mem_percent = request_args.get('mem_percent', None)
-        if mem_percent:
-            if isinstance(mem_percent, list):
-                mem_percent = float(mem_percent[0])
+        if mem_percent and isinstance(mem_percent, list):
+            mem_percent = float(mem_percent[0])
         return mem_percent
 
     @staticmethod
     def get_mem_rss(request_args):
         mem_rss = request_args.get('mem_rss', None)
-        if mem_rss:
-            if isinstance(mem_rss, list):
-                mem_rss = float(mem_rss[0])
+        if mem_rss and isinstance(mem_rss, list):
+            mem_rss = float(mem_rss[0])
         return mem_rss
 
     @staticmethod
     def get_mem_vms(request_args):
         mem_vms = request_args.get('mem_vms', None)
-        if mem_vms:
-            if isinstance(mem_vms, list):
-                mem_vms = float(mem_vms[0])
+        if mem_vms and isinstance(mem_vms, list):
+            mem_vms = float(mem_vms[0])
         return mem_vms
 
     @staticmethod
@@ -89,17 +84,13 @@ class ProcessNode(nodes.LazyNode):
         combiner = request_args.get('combiner', 'and')
         if isinstance(combiner, list):
             combiner = combiner[0]
-        if combiner == 'or':
-            return any
-        else:
-            return all
+        return any if combiner == 'or' else all
 
     @staticmethod
     def get_match(request_args):
         match = request_args.get('match', None)
-        if match:
-            if isinstance(match, list):
-                match = match[0]
+        if match and isinstance(match, list):
+            match = match[0]
         return match
 
     def make_filter(self, *args, **kwargs):
@@ -189,16 +180,16 @@ class ProcessNode(nodes.LazyNode):
                         else:
                             comp.append(False)
 
-            if not cpu_percent is None:
+            if cpu_percent is not None:
                 comp.append(cpu_percent <= process['cpu_percent'][0])
 
-            if not mem_percent is None:
+            if mem_percent is not None:
                 comp.append(mem_percent <= process['mem_percent'][0])
 
-            if not mem_rss is None:
+            if mem_rss is not None:
                 comp.append(mem_rss <= process['mem_rss'][0])
 
-            if not mem_vms is None:
+            if mem_vms is not None:
                 comp.append(mem_vms <= process['mem_vms'][0])
 
             return comparison(comp)
@@ -254,11 +245,7 @@ class ProcessNode(nodes.LazyNode):
             mem_percent = 0;
 
         try:
-            # Make unit types
-            u = 'B'
-            if units != 'B':
-                u = '%s%s' % (units, 'B')
-
+            u = f'{units}B' if units != 'B' else 'B'
             # Get adjusted scales
             pmi = process.memory_info()
             value, uts = self.adjust_scale(self, pmi.rss, units)
@@ -293,7 +280,7 @@ class ProcessNode(nodes.LazyNode):
             procs = subprocess.Popen(['ps', 'aux'], stdout=ps_out)
             procs.wait()
             ps_out.seek(0)
-            
+
             # The first line is the header
             ps_out.readline()
 
@@ -345,29 +332,25 @@ class ProcessNode(nodes.LazyNode):
         cpu_percent = self.get_cpu_percent(request_args)
         mem_percent = self.get_mem_percent(request_args)
 
-        if self.get_combiner(request_args) == all:
-            combiner = 'and'
-        else:
-            combiner = 'or'
-
+        combiner = 'and' if self.get_combiner(request_args) == all else 'or'
         if exes or names or cpu_percent or mem_percent:
             title += ' for'
-            if exes:
-                title += ' exes named '
-                title += ','.join(exes)
-                if names or cpu_percent or mem_percent:
-                    title += ' ' + combiner
-            if names:
-                title += ' processes named '
-                title += ','.join(names)
-                if cpu_percent or mem_percent:
-                    title += ' ' + combiner
-            if cpu_percent:
-                title += ' CPU usage greater than %.2f %s' % (cpu_percent, '%')
-                if mem_percent:
-                    title += ' ' + combiner
+        if exes:
+            title += ' exes named '
+            title += ','.join(exes)
+            if names or cpu_percent or mem_percent:
+                title += f' {combiner}'
+        if names:
+            title += ' processes named '
+            title += ','.join(names)
+            if cpu_percent or mem_percent:
+                title += f' {combiner}'
+        if cpu_percent:
+            title += ' CPU usage greater than %.2f %s' % (cpu_percent, '%')
             if mem_percent:
-                title += ' Memory Usage greater than %.2f %s' % (mem_percent, '%')
+                title += f' {combiner}'
+        if mem_percent:
+            title += ' Memory Usage greater than %.2f %s' % (mem_percent, '%')
         return [title]
 
     def run_check(self, *args, **kwargs):

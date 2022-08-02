@@ -119,8 +119,7 @@ class Listener(Base):
 
         # Check if there is a start delay
         try:
-            delay_start = self.config.get('listener', 'delay_start')
-            if delay_start:
+            if delay_start := self.config.get('listener', 'delay_start'):
                 logging.info('Delayed start in configuration. Waiting %s seconds to start.', delay_start)
                 time.sleep(int(delay_start))
         except Exception:
@@ -154,7 +153,7 @@ class Listener(Base):
 
             try:
                 ssl_str_version = self.config.get('listener', 'ssl_version')
-                ssl_version = getattr(ssl, 'PROTOCOL_' + ssl_str_version)
+                ssl_version = getattr(ssl, f'PROTOCOL_{ssl_str_version}')
             except:
                 ssl_version = getattr(ssl, 'PROTOCOL_TLSv1')
                 ssl_str_version = 'TLSv1'
@@ -226,8 +225,8 @@ class Listener(Base):
         self.parse_config()
         self.setup_logging()
         self.setup_plugins()
-        logging.info("Parsed config from: %s" % str(self.config_filenames))
-        logging.info("Looking for plugins at: %s" % self.abs_plugin_path)
+        logging.info(f"Parsed config from: {self.config_filenames}")
+        logging.info(f"Looking for plugins at: {self.abs_plugin_path}")
 
 
 class Passive(Base):
@@ -244,24 +243,24 @@ class Passive(Base):
         run_time = time.time()
 
         # Empty passive handlers will skip trying to run any handlers
-        if handlers[0] == 'None' or handlers[0] == '':
+        if handlers[0] in ['None', '']:
             return
 
         # Runs either nrds, nrdp or kafka
         for handler in handlers:
             try:
                 handler = handler.strip()
-                module_name = 'passive.%s' % handler
+                module_name = f'passive.{handler}'
                 __import__(module_name)
                 tmp_handler = sys.modules[module_name]
             except ImportError as e:
-                logging.error('Could not import module passive.%s, skipping. %s' % (handler, str(e)))
+                logging.error(f'Could not import module passive.{handler}, skipping. {str(e)}')
                 logging.exception(e)
             else:
                 try:
                     ins_handler = tmp_handler.Handler(self.config)
                     ins_handler.run(run_time)
-                    logging.debug('Successfully ran handler %s' % handler)
+                    logging.debug(f'Successfully ran handler {handler}')
                 except Exception as e:
                     logging.exception(e)
 
@@ -280,8 +279,7 @@ class Passive(Base):
 
         # Check if there is a start delay
         try:
-            delay_start = self.config.get('passive', 'delay_start')
-            if delay_start:
+            if delay_start := self.config.get('passive', 'delay_start'):
                 logging.info('Delayed start in configuration. Waiting %s seconds to start.', delay_start)
                 time.sleep(int(delay_start))
         except Exception:
@@ -314,5 +312,7 @@ class Passive(Base):
         self.parse_config()
         self.setup_logging()
         self.setup_plugins()
-        logging.info("Parsed config from: %s" % str(self.config_filenames))
-        logging.info("Looking for plugins at: %s" % self.config.get('plugin directives', 'plugin_path'))
+        logging.info(f"Parsed config from: {self.config_filenames}")
+        logging.info(
+            f"Looking for plugins at: {self.config.get('plugin directives', 'plugin_path')}"
+        )
